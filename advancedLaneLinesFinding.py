@@ -14,7 +14,7 @@
 # 
 # 
 
-# In[12]:
+# In[31]:
 
 #  Initialize the enviraonment conditions for etect lane lines
 import numpy as np                 # NumPy
@@ -45,7 +45,7 @@ get_ipython().magic('matplotlib inline')
 
 # ### Helper function
 
-# In[13]:
+# In[32]:
 
 # define pickle to save the distoriton coefficients k1,k1 and k3 'dist' and the camera matrix as 'mtx'
 def pickle_dump(mtx, dist):
@@ -71,13 +71,27 @@ def draw_and_save_image(path, name, plot=False,save= False):
         write_name = name + '.jpg'
         cv2.imwrite(str(path) + write_name,img)
     return
+
+# For universal plotting of results
+def plot_row2(img1, img2, label_1, label_2, graysc=True):
+    # Plot the result (1 row with 2 images)
+    f, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
+    f.tight_layout()
+    if graysc:
+        ax1.imshow(img1, cmap='gray')
+    else:
+        ax1.imshow(img1)
+    ax1.set_title(label_1, fontsize=16)
+    ax2.imshow(img2, cmap='gray')
+    ax2.set_title(label_2, fontsize=16)
+    plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         
             
 
 
-# #### Execute the Camera calibration with the calibration images with an amount of 20
+# ### Execute the Camera calibration with the calibration images
 
-# In[14]:
+# In[33]:
 
 #Calculate the 3d and 2d points for preparing the camera calibration
 def find2D3DCorners():
@@ -133,74 +147,155 @@ def calibrate_camera(img):
 mtx, dist = calibrate_camera(img)
 
 
-# ### Image Pipeline from undistortion to perspective transform for each frame in the video
+# ### Color Threshold and Gradient Threshold
 
-# In[15]:
+# #### Gradient Threshold Functions
+
+# In[ ]:
+
+# Apply Sobel directional gradient and apply gradient threshold
+def abs_sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(0, 255)):
+    # Take s-channel of HLS color space
+    img_trans = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    img_trans = img_trans[:,:,2]
+    # Calculate the derivative. That depends on argument orient = 'x' or 'y'
+    if orient == 'x':
+        sobel = cv2.Sobel(img_trans, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    elif orient == 'y':
+        sobel = cv2.Sobel(img_trans, cv2.CV_64F, 0, 1, ksize=sobel_kernel) 
+    # Calc absolute gradient
+    abs_sobel = np.absolute(sobel)
+    # Scale to 8-bit (0 - 255) then convert to type = np.uint8
+    scaled_sobel = np.uint8(255 * abs_sobel / np.max(abs_sobel))
+    # Create a mask of 1's where the scaled gradient magnitude 
+    binary_output = np.zeros_like(scaled_sobel)
+    # is > thresh_min and < thresh_max
+    binary_output[(scaled_sobel >= thresh[0]) & (scaled_sobel <= thresh[1])] = 1
+    # Return mask as binary_output image
+    return binary_output
+
+# Define a function that applies Sobel x and y, 
+# then computes the magnitude of the gradient
+# and applies a threshold
+def mag_thresh(img, sobel_kernel=3, mag_thresh=(0, 255)):
+    # Convert to HLS
+    img_trans = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    # Take the s channel as reference
+    img_trans = img_trans[:,:,2]
+    # Take the gradient in x and y separately
+    sobel_x = cv2.Sobel(img_trans, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobel_y = cv2.Sobel(img_trans, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    # Calculate the gradient magnitude
+    gradmag = np.sqrt(sobel_x**2 + sobel_y**2)
+    # Rescale to 8 bit
+    scale_factor = np.max(gradmag)/255 
+    gradmag = (gradmag/scale_factor).astype(np.uint8)
+    # Create a binary image of ones where threshold is met, zeros otherwise
+    binary_output = np.zeros_like(gradmag)
+    binary_output[(gradmag >= mag_thresh[0]) & (gradmag <= mag_thresh[1])] = 1
+    # Return masked image as the binary_output image
+    return binary_output
+
+# Calculate gradient direction and apply threshold
+def dir_threshold(img, sobel_kernel=3, thresh=(0, np.pi/2)):
+    # Convert to HLS
+    img_trans = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    # Take the s channel as reference
+    img_trans = img_trans[:,:,2]
+    # Calculate the x and y gradients
+    sobel_x = cv2.Sobel(img_trans, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobel_y = cv2.Sobel(img_trans, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    # Take the absolute value of the x and y gradients
+    abs_sobel_x = np.absolute(sobel_x)
+    abs_sobel_y = np.absolute(sobel_y)
+    # Take the absolute value of the gradient direction, 
+    # apply a threshold, and create a binary image result
+    absgraddir = np.arctan2(np.absolute(sobely), np.absolute(sobelx))
+    binary_output =  np.zeros_like(absgraddir)
+    binary_output[(absgraddir >= thresh[0]) & (absgraddir <= thresh[1])] = 1
+    # Return this mask as binary_output image
+    return binary_output
+
+
+# In[ ]:
+
+def combinedGradientThresholds(img, do_plot=False):
+    # Gaussian Blur
+    kernel_size = 5
+    img = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+    # Sobel kernel size (choose a larger odd number to smooth gradient measurements)
+    ksize = 7
+    # Apply Sobel on x-axis
+    grad_x_binary = abs_sobel_thresh(img, orient='x', sobel_kernel=ksize, thresh=(10, 255))
+    # Apply Sobel on y-axis
+    grad_y_binary = abs_sobel_thresh(img, orient='y', sobel_kernel=ksize, thresh=(60, 255))
+    # Apply Sobel x and y, compute the magnitude of the gradient and apply a threshold
+    mag_binary = mag_thresh(img, sobel_kernel=ksize, mag_thresh=(40, 255))
+    # Apply Sobel x and y, computes the direction of the gradient and apply a threshold
+    dir_binary = dir_threshold(image, sobel_kernel=ksize, thresh=(0.65, 1.05))
+    
+    # Combine the thresholds
+    combined = np.zeros_like(dir_binary)
+    combined[((grad_x_binary == 1) & (grad_y_binary == 1)) | ((mag_binary == 1) & (dir_binary == 1))] = 1
+    
+    # Return the best of Gradient Threshold
+    return combined
+
+
+# #### Color threshold function
+
+# In[34]:
 
 # combine the best out of two worös color and gradient threshold methods
-def calcCombinedThresholdetBinaryImage(img, s_thresh=(175, 255), sx_thresh=(30, 90)):
+def combinedColorSpaceThresholds(img, s_thresh=(0, 255)):
     img = np.copy(img)
-    # Convert to HSV color space and separate the V channel
+    # Convert to HLS color space and separate the S channel
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
-    l_channel = hls[:,:,1]
-    s_channel = hls[:,:,2]
-    # Sobel x
-    sobelx = cv2.Sobel(s_channel, cv2.CV_64F, 1, 0) # Take the derivative in x
-    abs_sobelx = np.absolute(sobelx) # Absolute x derivative to accentuate lines away from horizontal
-    scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx))
-    
-    # Threshold x gradient
-    sxbinary = np.zeros_like(scaled_sobel)
-    sxbinary[(scaled_sobel >= sx_thresh[0]) & (scaled_sobel <= sx_thresh[1])] = 1
-    
-    # For yellow
-    #yellow = cv2.inRange(hsv, (20, 100, 100), (50, 255, 255))
-    
+    s_channel = hls[:,:,2]    
     # Threshold color channel
     s_binary = np.zeros_like(s_channel)
     s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
-    # Stack each channel    
-    color_binary = np.dstack(( np.zeros_like(sxbinary), sxbinary, s_binary))
-    # Combine the two binary thresholds
-    combined_binary = np.zeros_like(sxbinary)
-    combined_binary[(s_binary == 1) | (sxbinary == 1)] = 1
-    #combined_binary[(s_binary == 1) | (sxbinary == 1) | (yellow == 1)] = 1
-
-    return color_binary, combined_binary
-
-
-# In[28]:
-
-# Practical approach to define src and dst point inthe original and output image
-def corners_unwarp(img, nx, ny, mtx, dist):
-    # Convert undistorted image to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Search for corners in the grayscaled image
-    ret, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
-
-    if ret == True:
+    
+    # mapping for generalization for later mixed up color space solution
+    colorBinary = s_binary 
         
-        # Choose offset from image corners to plot detected corners
-        # This should be chosen to present the result at the proper aspect ratio
-        # My choice of 100 pixels is not exact, but close enough for our purpose here
-        offset = 100 # offset for dst points
-        # Grab the image shape
-        img_size = (gray.shape[1], gray.shape[0])
+    return colorBinary
 
-        # For source points I'm grabbing the outer four detected corners
-        src = np.float32([corners[0], corners[nx-1], corners[-1], corners[-nx]])
-        # For destination points, I'm arbitrarily choosing some points to be
-        # a nice fit for displaying our warped result 
-        # again, not exact, but close enough for our purposes
-        dst = np.float32([[offset, offset], [img_size[0]-offset, offset], 
-                                     [img_size[0]-offset, img_size[1]-offset], 
-                                     [offset, img_size[1]-offset]])
-       
-    # Return the resulting image and matrix
+
+# #### Combine Color Threshold and Gradient Threshold
+
+# In[ ]:
+
+def combineColorAndGradientThresholds(image):
+    # Perform Sobel operations and combine thresholds
+    combinedGradientThresholds = combinedGradientThresholds(image)
+    # Threshold color channel
+    combinedColorThresholds = combinedColorSpaceThresholds(image, thresh=(160, 255))
+    # Combine color and gradient thresholds
+    combinedThresholdsBinaryImage = np.zeros_like(combinedColorThresholds)
+    combinedThresholdsBinaryImage[(combinedGradientThresholds == 1) | (combinedColorThresholds == 1)] = 1
+    # Plot results
+    #plot_row2(combine_sobel, color_thresh, 'Combined Sobel operations', 'S threshold', graysc=True)
+    #plot_row2(undist_image, combined_binary, 'Original Image (Undistorted)', 'Final Thresholded Image')
+    
+    return combinedThresholdsBinaryImage
+
+
+# In[35]:
+
+# Practical approach to define src and dst point in the original and output image
+def calcSrcAndDstPoints(img):
+    # Define 4 source points
+    src = np.float32([[180, img.shape[0]], [575, 460], 
+                      [705, 460], [1150, img.shape[0]]])
+    # Define 4 destination points
+    dst = np.float32([[320, img.shape[0]], [320, 0], 
+                      [960, 0], [960, img.shape[0]]])       
+    
     return src,dst
 
 
-# In[17]:
+# In[36]:
 
 # Implement Sliding Windows and Fit a Polynomial
 def slidingWindowMethod (binary_warped, leftx_base, rightx_base):
@@ -264,7 +359,7 @@ def slidingWindowMethod (binary_warped, leftx_base, rightx_base):
     return out_img, leftx, lefty, rightx, righty
 
 
-# In[18]:
+# In[37]:
 
 def polynomFit2nd(lefty, leftx, righty, rightx):
     # Fit a second order polynomial to each
@@ -274,7 +369,7 @@ def polynomFit2nd(lefty, leftx, righty, rightx):
     return left_fit, right_fit
 
 
-# In[19]:
+# In[38]:
 
 def genrateValuesXYforPlot(binary_warped,left_fit,right_fit):
     # Generate x and y values for plotting
@@ -285,31 +380,52 @@ def genrateValuesXYforPlot(binary_warped,left_fit,right_fit):
     return left_fitx,right_fitx,ploty
 
 
-# In[29]:
+# In[ ]:
+
+# Applies an image mask
+# Only keeps the region of the image defined by the polygon formed from `vertices`.
+# The rest of the image is set to black.
+def region_of_interest(img, vertices):
+    # Defining a blank mask to start with
+    mask = np.zeros_like(img)
+    ignore_mask_color = 255
+    # Fill pixels inside the polygon defined by "vertices" with the fill color    
+    cv2.fillPoly(mask, vertices, ignore_mask_color)
+    # Return the image only where mask pixels are nonzero
+    masked_image = cv2.bitwise_and(img, mask)
+    return masked_image
+
+
+# In[39]:
 
 
 def main(img):
-  nx = 8 # the number of inside corners in x
-  ny = 6 # the number of inside corners in y
-  # Load calibration data generated in calibrate_camera
+      # Load calibration data generated in calibrate_camera
   mtx, dist = pickle_load()
   # Calculate the undistorted image
   image_undistored = cv2.undistort(img, mtx, dist, None, mtx)
   
-  #color and sobel gradient threshold
-  color_binary, combined_binary = calcCombinedThresholdetBinaryImage(image_undistored, s_thresh=(175, 255), sx_thresh=(30, 90))
-  
-  # define source_img and destination_img point for preparing the perspective transform
+  #Calculate combined binaryImage based on a mix of both
+  # combinedColorThresholds and combinedSobelGradient threshols
+  combinedThresholdsBinaryImage = combineColorAndGradientThresholds(image_undistored)    # define source_img and destination_img point for preparing the perspective transform
   # using cv2.findChessboardCorners
-  src,dst = corners_unwarp(image_undistored, nx, ny, mtx, dist)
+  src, dst = calcSrcAndDstPoints(combinedThresholdsBinaryImage)
   # Given src and dst points, calculate the perspective transform matrix
   M = cv2.getPerspectiveTransform(src, dst)
   
   # Warp the image using OpenCV warpPerspective()
-  binary_warped = cv2.warpPerspective(image_undistored, M, img_size)    
+  img_size = (combinedThresholdsBinaryImage.shape[1], combinedThresholdsBinaryImage.shape[0])
+  binary_warped = cv2.warpPerspective(combinedThresholdsBinaryImage, M, img_size, flags=cv2.INTER_LINEAR)    
+  
+  # Define image mask (polygon of interest)
+  binaryWarpedImageShape = binary_warped.shape
+  vertices = np.array([[(200, binaryWarpedImageShape[0]), (200, 0), (binaryWarpedImageShape[1] - 200, 0), 
+                    (binaryWarpedImageShape[1]-200, binaryWarpedImageShape[0])]], dtype=np.int32)
+  masked_img = region_of_interest(binary_warped, vertices)
+  
   
   # Take a histogram of the bottom half of the image
-  histogram = np.sum(binary_warped[binary_warped.shape[0]/2:,:], axis=0)    
+  histogram = np.sum(masked_img[masked_img.shape[0]/2:,:], axis=0)    
   # Find the peak of the left and right halves of the histogram
   # These will be the starting point for the left and right lines
   midpoint = np.int(histogram.shape[0]/2)
@@ -340,7 +456,7 @@ def main(img):
   
 
 
-# In[30]:
+# In[44]:
 
 #Test Image Pipeline
 for image in images:
@@ -352,7 +468,7 @@ for image in images:
     plt.show()
 
 
-# In[20]:
+# In[40]:
 
 # Calculate the radius in pixel space unit with the following formula:
  
@@ -366,7 +482,7 @@ def getRadiusPixelSpace(left_fit,right_fit):
     return left_curverad, right_curverad 
 
 
-# In[21]:
+# In[41]:
 
 # Calculate the radius in real world space with the following formula:
 
@@ -390,7 +506,7 @@ def convertRadiusIntoMeter(ploty,y_eval):
     return left_curverad, right_curverad
 
 
-# In[22]:
+# In[42]:
 
 # Draw the results back from warped space into original undistorted image space
 def drawPolynomialsBackIntoOriginalImage(warped, left_fitx, right_fitx, ploty, Minv):
@@ -414,7 +530,7 @@ def drawPolynomialsBackIntoOriginalImage(warped, left_fitx, right_fitx, ploty, M
     return finalOutputImage
 
 
-# In[ ]:
+# In[43]:
 
 # LOOK AHEAD FILTER
 # Assume you now have a new warped binary image 
