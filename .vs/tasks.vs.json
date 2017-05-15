@@ -1,0 +1,10 @@
+{
+  "version": "0.2.1",
+  "tasks": [
+    {
+      "taskName": "task-advancedLaneLinesFinding",
+      "appliesTo": "advancedLaneLinesFinding.py",
+      "type": "command"
+    }
+  ]
+}

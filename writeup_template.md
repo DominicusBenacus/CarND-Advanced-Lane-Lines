@@ -26,6 +26,8 @@ The goals / steps of this project are the following:
 [image5]: ./output_images/binaryWarped.png " binary warped"
 [image6]: ./output_images/SlidingWindow.png " Sliding Window"
 [image7]: ./output_images/finish.png " finish"
+[image8]: ./output_images/SystemDesignCalibration.jpg " System Design"
+[image9]: ./output_images/SystemDesignImageProcess.jpg " System Design"
 
 [video1]: ./project_video.mp4 "Video"
 
@@ -64,7 +66,7 @@ I then used the output `objpoints` and `imgpoints` to compute the camera calibra
 
 I used a combination of color and gradient thresholds and sobel gradient thresholds. I combined all three sobel gradient calculation and mixed it.
 
-Sat first I combined sobel absolute direction and mesh for get a good mix:
+Sat first I combined sobel absolute, direction and mesh for get a good mix. The fucntion which performes the mix named combineColorAndGradientThresholds(image). here an example of the output after combining Sobel and combinign all Nix of Sobel with color threshold method.
 
 
 ![Sobel Binary Example][image3]
@@ -96,7 +98,7 @@ Especially I chose hard coded src and destination point in the following manner:
                       [960, 0], [960, img.shape[0]]])
 ```
 
-This is the output: 
+This is the output of a original warped test image and a binary warped: 
 ![binary warped][image5]
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
@@ -123,7 +125,7 @@ TO calculate the deviation to center I did the following:
     deviation = int(abs(mid_of_lane - car_pos) * (3.7 / 700) * 100)  
 ```
 
-To calculate the radius there is a fucntion called convertRadiusIntoMeter(ploty,y_eval,leftx, lefty, rightx, righty) in my .jypnb
+To calculate the radius there is a function called convertRadiusIntoMeter(ploty,y_eval,leftx, lefty, rightx, righty) in my .jypnb
 
 snipped:
 ```python
@@ -160,12 +162,35 @@ Here's a [link to my video result](./project_video.mp4)
 
 Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.
 
-- So I chose to make thing running and build up a pipeline out of the snippets from the lessons.
-- So there are two pipelines. Ine only use sliding window mehtod and one with some checks about the quality of line detection after sliding window method. My plan was to implement first a stright piepeline without any sanity check and make a proof of concept for one picture and also the video pipeline. The result was that everytime in the curve with hard shadows and bad lanes I got a problem to detect lines.
+In general my pipeline should work like this:
 
-Thats ok because I expected it and start to implement the second level of the pipeline. This means to add some sanity checks.
+1. Gerate a calibration pickle set. I do the with the calibration chessboard set of the repository. 
+ This step is needed only once and at the end I created a wide_dist_pickle file where the camera matriy and the dist are stored. The main part here is impemented in the find2D3DCorners().There is a single path on the leften side in my system design overview shown below.
 
-first step. detect enough points to fit a lane. If not take the old ones. Therfore I used global variables like leftx_old
+ ![alt text][image8]
+
+2. I chose to get things running and build up a pipeline out of the code snippets from the lessons. So there are two pipelines shown in the image of processing below.
+In one option I only use sliding window mehtod and one with some checks about the quality of line detection after sliding window method. My plan was to implement first a stright piepeline without any sanity checks and make a proof of concept for one picture and also the video pipeline. One can see it on the righten side in the system design image if you just ignore the if conditions after the block of sanity check and the block look ahead filter.
+
+ ![alt text][image9]
+
+Further more there is also a common part for the first four steps including:
+* undistortion of the input frames
+* Apply sobel and color threshold methods and mix up the results
+* Calc source and destination points and make a perspective tranform
+* Apply the sliding window method to detect line pixelx of the left and right line
+
+* also the calculation of radius and deviation is the same
+
+The result was that everytime in the curve with hard shadows and bad lanes markings I got a problem to detect lines. This is also the part my pipeline failed. So one take a close look on the system design above, one can see some if statements and a feedback channel.
+
+So the if conditions shall be triggert depending on the sanity checks. So everytime we detect good lines a use the look ahead method ti detect pixel we draw the results. But if sanity checks fails the pipeline shall use the sliding window method as long as we have good results of lines again. 
+
+On this point I have to tell that my pipeline did not work in the descripted way in the ipynb. My python knowledge was not enough to deal with classes and because of that and other missing programm skills I just use the sliding window method without if statements. What I have done is to detect whehter there were detect lines in general and store the lines in global variables to use it till there ar egood lines again.
+
+
+
+Detect enough points to fit a lane? If not take the old ones. Therfore I used global variables like leftx_old
 ```python
 
 if (len(leftx) < 1500):
@@ -184,14 +209,14 @@ if (len(leftx) < 1500):
         righty_old = righty
 ``` 
 
-Ok now we chcked that. but even if we detect enough points.Wahta bout quality of that points.
+Ok now we checked that. but even if we detect enough points.Waht about quality of that points.
 Therefore I chose to try from scipy.stats.stats import pearsonr () and add a sensful threshold.
 
 * pearsonr() returns a two-tuple consisting of the correlation coefficient and the corresponding p-value:
 
 * The correlation coefficient can range from -1 to +1. The null hypothesis is that the two variables are uncorrelated. The p-value is a number between zero and one that represents the probability that your data would have arisen if the null hypothesis were true.
 
-So it looks inside the sanity check function:
+So it looks inside the sanity check function. One can find it in the sliding_window..()
 
 ```python
     ret_left = pearsonr (left_fitx_old, left_fitx)
@@ -206,9 +231,29 @@ So it looks inside the sanity check function:
     ...[]
 ```
 
-Ok now we check more and filer out bad line detection for a short tim horizon.
+Ok now we check more and filer out bad line detection for a short time horizon. That step skips me in a acceptable way through the bad curves and lane marking sections of the project video. 
 
-Further the plan was to create an attribute detect lines = False or something like this. That atttribute allows to decide whether choose the sliding window method or call the lookAhead() function which is more effective once we detect good lines.
+At this point my python know how was not good enough to deal with classes or other structures for story values. I made some experiences with object orientated stuff like shown in
+
+* advancedLaneLinesFindingTryObjectOrientated.ipynb
+* line.py Class
+* LineDetection.py Class
+* functions pynthon file with functions
+
+but I did not come around and time was running. If u want u can take a look. So I decided to get an acceptable run with the implementation of advancedLaneLinesFindingSecodLevel.ipynb which produce the linked output video above.
+
+My understanding of what is the sense of using the collection module is very well but I did not get it in python as quick as I should.
+
+
+Thats it and I learned a lot about problems during lane line detection and what are possibilies to deal with them. For example store good lines in a collection and use the avarage or use sliding window only if necessary. But at the end I struggle on python :-).
+
+
+
+
+
+
+
+
 
 
 
