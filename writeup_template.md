@@ -28,6 +28,7 @@ The goals / steps of this project are the following:
 [image7]: ./output_images/finish.png " finish"
 [image8]: ./output_images/SystemDesignCalibration.jpg " System Design"
 [image9]: ./output_images/SystemDesignImageProcess.jpg " System Design"
+[image10]: ./output_images/sobelBinaryImagesAllThree.png " Sobel binary"
 
 [video1]: ./project_video.mp4 "Video"
 
@@ -35,6 +36,7 @@ The goals / steps of this project are the following:
 
 ### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
 
+ [All used code for this submission is located in this file advancedLaneLinesFindingSecodLevel.ipynb](./advancedLaneLinesFindingSecodLevel)
 
 
 ### Camera Calibration
@@ -43,6 +45,7 @@ The goals / steps of this project are the following:
 
 I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.
 
+IN[3]:
 ```python
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
     objp = np.zeros((6*9,3), np.float32)
@@ -60,11 +63,40 @@ I then used the output `objpoints` and `imgpoints` to compute the camera calibra
 
 #### 1. Provide an example of a distortion-corrected image.
 
+Done in [235]:
+````python
+# Load calibration data generated in calibrate_camera
+    mtx, dist = pickle_load()
+    # Calculate the undistorted image
+    image_undistored = cv2.undistort(img, mtx, dist, None, mtx)
+```
 ![undistorted_2][image2]
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-I used a combination of color and gradient thresholds and sobel gradient thresholds. I combined all three sobel gradient calculation and mixed it.
+For getting the almost best gradient and color space anlysis I spend a lot of time to play around with different color spaces like LAB,RGB and LUV. The key is to plot the images after each creation of a binary image. So if one makes i.e. abs sobel_x and sobel magnitude--> plot after each gradient process to evaluate the influence of each process. Now one got a feeling which process performs in a special area of the image better than others. Once we know this we can implement a fitting condition algorithm to combine the different binary images. The rule is: Take an OR condition if the images complement each other and take an AND if u want to skip out bad areas out of one image. The same for color combination of color binary images.
+
+In [218] the fucntion call In [167] the fucntion definition.
+From Sobel I used
+```python
+grad_x_binary = abs_sobel_thresh(img, orient='x', sobel_kernel=ksize, thresh=(20, 255))
+grad_y_binary = abs_sobel_thresh(img, orient='y', sobel_kernel=ksize, thresh=(65, 255))
+mag_binary = mag_thresh(img, sobel_kernel=ksize, mag_thresh=(65, 255))
+```
+Of course there is a lot potential in choosing the threshold but that could be a n endless game. So, for the difficult images it was sufficient. Below is shwon hor I combined the different binary results to get the best out of them.
+
+```python
+# Combine the thresholds
+combined = np.zeros_like(grad_x_binary)
+combined[((grad_x_binary == 1)&(mag_binary ==1)&(grad_y_binary == 1)) | ((grad_x_binary == 1) & (mag_binary ==1))| (grad_x_binary == 1) ] = 1
+```
+Reults of each binary Image:
+
+![sobel binary images][image10]
+
+      
+
+ a combination of color and gradient thresholds and sobel gradient thresholds. I combined all three sobel gradient calculation and mixed it.
 
 Sat first I combined sobel absolute, direction and mesh for get a good mix. The fucntion which performes the mix named combineColorAndGradientThresholds(image). here an example of the output after combining Sobel and combinign all Nix of Sobel with color threshold method.
 
