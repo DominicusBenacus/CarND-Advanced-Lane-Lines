@@ -77,7 +77,7 @@ grad_x_binary = abs_sobel_thresh(img, orient='x', sobel_kernel=ksize, thresh=(20
 grad_y_binary = abs_sobel_thresh(img, orient='y', sobel_kernel=ksize, thresh=(65, 255))
 mag_binary = mag_thresh(img, sobel_kernel=ksize, mag_thresh=(65, 255))
 ```
-Of course there is a lot potential in define better thresholds but that could be a n endless game. So, for the difficult images it was sufficient. Below is shwon hor I combined the different binary results to get the best out of them.
+Of course there is a lot potential in define better thresholds but that could be a n endless game. So, for the difficult images it was sufficient. Below is shown how I combined the different binary threshhold results to get the best out of them.
 
 ```python
 # Combine the thresholds
@@ -88,10 +88,10 @@ Reults of each binary Image:
 
 ![sobel binary images][image10]
 
-What do we see: Sobel_x is showing a huge pixels and is the best gradient in a difficult image like the test5 image. So sobel_x is the only gradient in the combination algo which stand alone like | (grad_x_binary == 1). Further I used a AND condition between  ((grad_x_binary == 1) & (mag_binary ==1)) for skipping out some negative noise areas in the mag_binary image. And on. It all about try and catch. For sure out of scope there are mathematically possibilities to generalize a method for calculate the thresholds and also the combination.
+What do we see: Sobel_x is showing a huge pixels and is the best gradient in a difficult image like the test5 image. So sobel_x is the only gradient in the combination algo which stand alone like | (grad_x_binary == 1). Further I used a AND condition between  ((grad_x_binary == 1) & (mag_binary ==1)) for skipping out some negative noise areas in the mag_binary image. And on. It is all about try and catch. For sure out of scope there are mathematically possibilities to generalize a method for calculate the optimal thresholds and also the combination. But that would be out of  project scope.
 
 What I did for creating color channel binary images:
-In [219] I used HLS LAB and LUV for getting the best combination of all color channels. For figure out the thresholds I played around with the test5 image In [227]
+In [219] I used HLS, LAB and LUV for getting the best combination of all color channel strength. For figure out the thresholds I played around with the test5 image In [227]
 * LAB b_thresh(25,255) -- LUV l_thresh(85,255) -- HLS s_thresh(180,255)
 
 ```python
@@ -151,11 +151,11 @@ Warped image after region masking
 
 ![binary warped unmasked][image15]
 
-In my opinion it is the most significant influence on the project to very, very well binary images. The pipeline for this challange video is secondary. Sanity checks are not necessary in this video like I figured out and show later in this writeUp with the submission video.
+In my opinion it is the most significant influence to the project result to calculate very, very well binary images. The pipeline for this challange video is secondary. Sanity checks are not necessary in this video like I figured out and show later in this writeUp with the submission video.
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-TO find out where the line pixels are I use the recommended mehtod slidingWindowMethod()in [234].Input arguments are the masked binary image shwon above and the leftx_base, rightx_base. For the base positions I applied a little sanity check to puffer an old bas value if the current frame is too bad.
+To find out where the line pixels are I use the recommended  slidingWindowMethod() method in [234]. Input arguments are the masked binary image shown above and the leftx_base, rightx_base. For the base positions I applied a little sanity check to puffer an old base value if the current cycle frame is too bad.
 
 ```python
 if (abs(leftx_base - rightx_base) < 250) & (abs(leftx_base - rightx_base) > 160):
@@ -192,7 +192,7 @@ To calculate the radius there is a function called convertRadiusIntoMeter(ploty,
     # Fit a second order polynomial to each
     left_fit_cr = np.polyfit(lefty * ym_per_pix, leftx * xm_per_pix, 2)
     right_fit_cr = np.polyfit(righty * ym_per_pix, rightx * xm_per_pix, 2)
-    # Calculate the new radii of curvature
+    # Calculate the new radius of curvature
     left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
     right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
 ```
